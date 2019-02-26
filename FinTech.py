@@ -33,24 +33,21 @@ path=r"E:\Yujun\DataAppLab\FinTech"
 os.chdir(path)
 import preprocessing as pr
 import modeling as md
-
-
-#%% 
+ 
 #Load data from local
-history1=pd.read_csv(os.path.join(path,'LoanStats3d.csv'),index_col=0)
-current1=pd.read_csv(os.path.join(path,'current_loans.csv'),index_col=0)
-history1=history1.reindex(sorted(history1.columns),axis=1)
-dollar_df1=pd.read_csv(os.path.join(path,'dollar_df.csv'),index_col=0)
+def load_data(name):
+    df=pd.read_csv(name,index_col=0)
+    df=df.reindex(sorted(df.columns),axis=1)
+    return df
 
-#%%
 #if long=1, means it will go thtough a step that lemmantizer words which will take a long time. If bypass, set long=0
 #if save=1, means it will output the results to a local directory
 def preprocessing(history,current,dollar_df,long,save):
     history=pr.underscore(history,1)
     current=pr.lower(current,1)
     #Add new column to separate train and test
-    history1['train_flag']=1
-    current1['train_flag']=0
+    history['train_flag']=1
+    current['train_flag']=0
     #Manually map the historical column names to current column names
     history=history.rename(index=str,columns={'zipcode':'addrzip','loanamnt':'loanamount',
                                   'fundedamnt':'fundedamount',
@@ -108,6 +105,8 @@ def preprocessing(history,current,dollar_df,long,save):
     #Applied adjustment of dollar value to 'annualinc' and 'remain_income_abs'
     total['annualinc']=total['annualinc']*total['dollar_value']
     total['remain_income_abs']=total['remain_income_abs']*total['dollar_value']
+    #sort the column names
+    total=total.reindex(sorted(total.columns),axis=1)
     #If an output is needed
     if save==1:
         total.to_csv(os.path.join(path,'total_bf_one_hot_encoding.csv'))
@@ -117,21 +116,14 @@ def preprocessing(history,current,dollar_df,long,save):
     ob_feature_h.remove('addrstate')
     ob_feature_h.remove('emptitle')
     ob_feature_h.remove('secappearliestcrline')
+    #sort the column names
+    total=total.reindex(sorted(total.columns),axis=1)
     #If length matches, one hot encoding the rest categorical features
     if (len(ob_feature_h)+len(num_feature_h)+4)==len(total.columns):
         total=pd.concat([total[num_feature_h],pd.get_dummies(total[ob_feature_h])],axis=1)
         if save==1:
             total.to_csv(os.path.join(path,'total_one_hot_encoded.csv'))
-    #sort the column names
-    total=total.reindex(sorted(total.columns),axis=1)
     return total
-
-
-total=preprocessing(history1,current1,dollar_df1,0,0)
-total.head()
-
-
-#%%
 
 def xgb_evaluate(eta,
                  min_child_weight,
@@ -201,19 +193,38 @@ def XGBmodel(total,opt,n_iter,n_imp):
     else:
         bst_params=test_params
     return model,bst_params,eval_results,bst_ntree,df_importance
-    
-model,bst_params,eval_results,bst_ntree,df_importance=XGBmodel(total,0,1500,20)
- 
-
-   
-        
+          
 def save(model,pickle_name,dat_name):
     with open(pickle_name,'wb') as pkl_file:
         pickle.dump(model,pkl_file)
     joblib.dump(model,dat_name)
-    
-save(model,'test.pkl','test.joblib.dat')    
 
+def main(preprocessed):
+    if preprocessed==0:
+        #Load data
+        history1=load_data('LoanStats3d.csv')
+        current1=load_data('current_loans.csv')
+        dollar_df1=load_data('dollar_df.csv')
+        #Preprocess data
+        #4th arguement=0: don't go through the word lemmantizer step which is time-consuming;
+        #5th argument=0: don't save the df before one-hot encoding and after one-hot encoding
+        total=preprocessing(history1,current1,dollar_df1,0,0)
+    else:
+        total=load_data('total_one_hot_encoded.csv')
+    #XGBmodel train data
+    #2nd argument=0: don't use bayesian optimization
+    #3rd argument=1500: number of boosting rounds
+    #4th argument=20: number of important features
+    model,bst_params,eval_results,bst_ntree,df_importance=XGBmodel(total,0,1500,20)
+    #Save the model
+    save(model,'test.pkl','test.joblib.dat')  
+
+import time
+start=time.time()
+if __name__=='__main__':
+    main(0)
+end=time.time()
+print("processed time: ",end-start)
 
 
 
